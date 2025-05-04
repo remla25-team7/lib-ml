@@ -1,0 +1,9 @@
+[project]
+name = "lib-ml"
+version = "0.1.0"
+description = "Text cleaning & tokenization for sentiment analysis"
+requires-python = ">=3.8"
+
+[project.dependencies]
+nltk = "^3.7"
+scikit-learn = "^1.1"

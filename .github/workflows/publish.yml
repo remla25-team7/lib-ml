@@ -1,0 +1,23 @@
+name: Publish lib-ml
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - run: pip install build twine
+      - run: python -m build
+      - run: |
+          python -m twine upload \
+            --repository github \
+            dist/*
+        env:
+          TWINE_USERNAME: ${{ github.actor }}
+          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}

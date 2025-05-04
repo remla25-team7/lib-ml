@@ -1,2 +1,0 @@
-scikit-learn>=1.6.1
-git+https://github.com/remla25-team7/lib-ml@v0.1.0
