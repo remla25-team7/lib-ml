@@ -2,72 +2,51 @@ name: Release lib-ml
 on:
   push:
     tags:
-      - '*.*.*'
-
-env:
-  PACKAGE_NAME: lib-ml
-  OWNER: remla25-team7
-
-permissions:
-  contents: read
-  packages: write   
+      - 'v*.*.*'
 
 jobs:
-  details:
+  build-and-test:
     runs-on: ubuntu-latest
-    outputs:
-      new_version: ${{ steps.extract.outputs.new_version }}
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - id: extract
-        name: Extract version
+      - uses: actions/setup-python@v4
+        with: 
+            python-version: '3.9'
+      - name: Install dependencies
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          VER=$(echo "$TAG" | cut -d'-' -f1)
-          echo "new_version=$VER" >>"$GITHUB_OUTPUT"
-
-  build:
-    needs: details
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Install build tool
-        run: pip install --upgrade build
-
-      - name: Build distributions
-        run: python -m build --sdist --wheel
-
-      - name: Upload dist artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: dist
-          path: dist/*
+          python -m pip install --upgrade pip
+          pip install .
+          pip install pytest
+      - name: Run tests
+        run: pytest
 
   publish:
-    needs: build
+    needs: build-and-test
     runs-on: ubuntu-latest
     steps:
-      - name: Download dist artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: dist
-          path: dist
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with: 
+            python-version: '3.9'
+      - name: Configure PyPI credentials
+        run: |
+            mkdir -p ~/.config/pip
+            cat > ~/.pypirc << EOF
+            [distutils]
+            index-servers =
+                github
 
+            [github]
+            repository: https://upload.pkg.github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}
+            username: $TWINE_USERNAME
+            password: $TWINE_PASSWORD
+            EOF
+    
       - name: Publish to GitHub Packages
         env:
-          TWINE_USERNAME: __token__
+          TWINE_USERNAME: ${{ github.actor }}
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pip install --upgrade twine
-          twine upload \
-            --repository-url https://upload.pypi.pkg.github.com/${{ env.OWNER }} \
-            dist/*
+          python -m pip install --upgrade twine
+          python setup.py sdist
+          twine upload --repository github dist/*
