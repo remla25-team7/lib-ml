@@ -34,14 +34,13 @@ jobs:
             python-version: '3.9'
       - name: Configure PyPI credentials
         run: |
-            mkdir -p ~/.config/pip
             cat > ~/.pypirc << EOF
             [distutils]
             index-servers =
                 github
 
             [github]
-            repository: https://upload.pkg.github.com/remla25-team7/lib-ml
+            repository: https://upload.pypi.pkg.github.com/remla25-team7
             username: $TWINE_USERNAME
             password: $TWINE_PASSWORD
             EOF
