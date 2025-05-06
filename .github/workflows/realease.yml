@@ -2,7 +2,7 @@ name: Release lib-ml
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - '*.*.*'
 
 jobs:
   build-and-test:
