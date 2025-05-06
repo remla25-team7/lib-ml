@@ -32,15 +32,15 @@ jobs:
         run: |
             mkdir -p ~/.config/pip
             cat > ~/.pypirc << EOF
-[distutils]
-index-servers =
-    github
+            [distutils]
+            index-servers =
+                github
 
-[github]
-repository: https://upload.pkg.github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}
-username: $TWINE_USERNAME
-password: $TWINE_PASSWORD
-EOF
+            [github]
+            repository: https://upload.pkg.github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}
+            username: $TWINE_USERNAME
+            password: $TWINE_PASSWORD
+            EOF
     
       - name: Publish to GitHub Packages
         env:
