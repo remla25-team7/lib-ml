@@ -1,10 +1,18 @@
 from setuptools import setup, find_packages
+import os
+
+version_ns = {}
+with open(os.path.join("lib_ml", "version.py")) as f:
+    exec(f.read(), version_ns)
 
 setup(
-    name='lib-ml',
-    version='0.1.0',
+    name="lib-ml",
+    version=version_ns["__version__"],
     packages=find_packages(),
     install_requires=[
-        'scikit-learn',
+        "nltk",
+        "scikit-learn",
+        "pandas"
     ],
+    python_requires=">=3.8",
 )

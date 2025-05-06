@@ -1,0 +1,52 @@
+name: Release lib-ml
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with: 
+            python-version: '3.9'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+          pip install pytest
+      - name: Run tests
+        run: pytest
+
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with: 
+            python-version: '3.9'
+      - name: Configure PyPI credentials
+        run: |
+            mkdir -p ~/.config/pip
+            cat > ~/.pypirc << EOF
+            [distutils]
+            index-servers =
+                github
+
+            [github]
+            repository: https://upload.pkg.github.com/remla25-team7/lib-ml
+            username: $TWINE_USERNAME
+            password: $TWINE_PASSWORD
+            EOF
+    
+      - name: Publish to GitHub Packages
+        env:
+          TWINE_USERNAME: ${{ github.actor }}
+          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m pip install --upgrade twine
+          python setup.py sdist
+          twine upload --repository github dist/*
