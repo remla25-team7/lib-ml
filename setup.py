@@ -6,7 +6,7 @@ with open(os.path.join("lib_ml", "version.py")) as f:
     exec(f.read(), version_ns)
 
 setup(
-    name="lib-ml",
+    name="remla25-team7-lib-ml",
     version=version_ns["__version__"],
     packages=find_packages(),
     install_requires=[
