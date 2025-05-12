@@ -36,10 +36,12 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python setup.py sdist bdist_wheel
 
-      - name: Publish package
+      - name: Publish to PyPI
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          pip install twine
-          python -m twine upload --repository-url https://api.github.com/orgs/${{ github.repository_owner }}/packages/pypi/upload dist/*
+          python -m pip install --upgrade twine
+          twine upload --skip-existing dist/*
+        
       
