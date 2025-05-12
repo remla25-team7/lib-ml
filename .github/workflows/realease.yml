@@ -42,5 +42,6 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
           python -m pip install --upgrade twine
-          twine upload --repository-url https://pypi.pkg.github.com/${{ github.repository_owner }} dist/* \
+          twine upload \
+            --repository-url https://pypi.pkg.github.com/${{ github.repository_owner }}/ \
             dist/*
