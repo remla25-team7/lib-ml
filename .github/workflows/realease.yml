@@ -1,52 +1,47 @@
-name: Release lib-ml
+#
+name: Publish lib‑ml to GitHub Packages
+
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with: 
-            python-version: '3.9'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install .
-          pip install pytest
-      - name: Run tests
-        run: pytest
+  build-and-publish:
+    runs-on: ubuntu-22.04
 
-  publish:
-    needs: build-and-test
-    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with: 
-            python-version: '3.9'
-      - name: Configure PyPI credentials
-        run: |
-            mkdir -p ~/.config/pip
-            cat > ~/.pypirc << EOF
-            [distutils]
-            index-servers =
-                github
+      - uses: actions/checkout@v4
 
-            [github]
-            repository: https://upload.pkg.github.com/remla25-team7/lib-ml
-            username: $TWINE_USERNAME
-            password: $TWINE_PASSWORD
-            EOF
-    
-      - name: Publish to GitHub Packages
+      - name: Extract version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}          # strip leading refs/tags/v
+          MAJOR=$(cut -d. -f1 <<<"$VERSION")
+          MINOR=$(cut -d. -f2 <<<"$VERSION")
+          PATCH=$(cut -d. -f3 <<<"$VERSION")
+          echo "VERSION=$VERSION"           >> $GITHUB_ENV
+          echo "VERSION_MAJOR=$MAJOR"       >> $GITHUB_ENV
+          echo "VERSION_MINOR=$MINOR"       >> $GITHUB_ENV
+          echo "VERSION_PATCH=$PATCH"       >> $GITHUB_ENV
+
+      - name: Sync version.py with tag
+        run: |
+          echo "__version__ = \"${VERSION}\"" > lib_ml/version.py
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python setup.py sdist bdist_wheel
+
+      - name: Publish to PyPI
         env:
-          TWINE_USERNAME: ${{ github.actor }}
-          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           python -m pip install --upgrade twine
-          python setup.py sdist
-          twine upload --repository github dist/*
+          twine upload --skip-existing dist/*
+        
+      
