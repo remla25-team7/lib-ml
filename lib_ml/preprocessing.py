@@ -1,13 +1,25 @@
 import re
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem.porter import PorterStemmer
 
-nltk.download("stopwords", quiet=True)
+# Try to import NLTK stopwords; if unavailable, fall back to sklearn's list
+try:
+    import nltk
+    from nltk.corpus import stopwords
+    from nltk.stem.porter import PorterStemmer
 
-STOPWORDS = set(stopwords.words("english"))
-STOPWORDS.discard("not")         # keep “not” to preserve polarity
-STEMMER = PorterStemmer()
+    STOPWORDS = set(stopwords.words("english"))
+    STEMMER   = PorterStemmer()
+
+except (LookupError, ImportError):
+    from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+    from nltk.stem.porter import PorterStemmer
+
+    STOPWORDS = set(ENGLISH_STOP_WORDS)
+    STEMMER   = PorterStemmer()
+
+
+# Always keep “not” for polarity
+STOPWORDS.discard("not")
+
 
 def clean_review(text: str) -> str:
     """
