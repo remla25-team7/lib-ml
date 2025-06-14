@@ -1,40 +1,40 @@
-#
-name: Publish lib‑ml to GitHub Packages
+name: Release lib-ml Package
 
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    tags:
+      - 'v*'  
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
-  build-and-publish:
-    runs-on: ubuntu-22.04
+  publish:
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
 
       - name: Extract version from tag
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}          # strip leading refs/tags/v
-          MAJOR=$(cut -d. -f1 <<<"$VERSION")
-          MINOR=$(cut -d. -f2 <<<"$VERSION")
-          PATCH=$(cut -d. -f3 <<<"$VERSION")
-          echo "VERSION=$VERSION"           >> $GITHUB_ENV
-          echo "VERSION_MAJOR=$MAJOR"       >> $GITHUB_ENV
-          echo "VERSION_MINOR=$MINOR"       >> $GITHUB_ENV
-          echo "VERSION_PATCH=$PATCH"       >> $GITHUB_ENV
+        id: extract_version
+        run: echo "PKG_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Sync version.py with tag
+      - name: Inject version into lib_ml/version.py
         run: |
-          echo "__version__ = \"${VERSION}\"" > lib_ml/version.py
+          echo "__version__ = \"${{ steps.extract_version.outputs.PKG_VERSION }}\"" > lib_ml/version.py
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install build tools
+        run: python -m pip install --upgrade pip setuptools wheel
 
       - name: Build distributions
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          python setup.py sdist bdist_wheel
+        run: python setup.py sdist bdist_wheel
 
       - name: Publish to PyPI
         env:
@@ -43,5 +43,31 @@ jobs:
         run: |
           python -m pip install --upgrade twine
           twine upload --skip-existing dist/*
-        
-      
+
+      - name: Publish to GitHub Packages
+        env:
+          TWINE_USERNAME: ${{ github.actor }}
+          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m pip install --upgrade twine
+          # Use GitHub Packages URL
+          twine upload --skip-existing --repository-url https://upload.pypi.github.io/owner/repo/ dist/*
+
+      - name: Create GitHub Release with artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-pre') }}
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          body: |
+            Python package lib-ml version ${{ steps.extract_version.outputs.PKG_VERSION }} published!
+
+            Install with:
+
+            ```bash
+            pip install --extra-index-url https://pkg.github.com/${{ github.repository_owner }} lib-ml==${{ steps.extract_version.outputs.PKG_VERSION }}
+            ```
