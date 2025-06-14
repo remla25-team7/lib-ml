@@ -6,29 +6,19 @@ on:
 
 jobs:
   create_prerelease:
-    # Only create pre-release if current release tag does NOT already have "-pre"
     if: "!contains(github.event.release.tag_name, '-pre')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Calculate next pre-release version
         id: calc_version
         run: |
-          # Remove leading "v" from tag name, e.g. v1.0.0 -> 1.0.0
           BASE_VERSION=${{ github.event.release.tag_name }}
           BASE_VERSION=${BASE_VERSION#v}
-
-          # Split into parts
           IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
-
-          # Increment patch for pre-release
           PATCH=$((PATCH + 1))
-
-          # Compose new pre-release tag
           PRE_RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}-pre"
-
           echo "pre_release_tag=$PRE_RELEASE_TAG" >> $GITHUB_OUTPUT
           echo "Next pre-release tag: $PRE_RELEASE_TAG"
 
