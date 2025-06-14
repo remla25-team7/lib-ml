@@ -1,0 +1,87 @@
+name: Release lib-ml Package
+
+on:
+  push:
+    tags:
+      - 'v*'  
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Extract version from tag
+        id: extract_version
+        run: echo "PKG_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Inject version into lib_ml/version.py
+        run: echo "__version__ = \"${{ steps.extract_version.outputs.PKG_VERSION }}\"" > lib_ml/version.py
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Build distributions
+        run: python setup.py sdist bdist_wheel
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade twine
+          twine upload --skip-existing dist/*
+
+      - name: Create GitHub Release with artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-pre') }}
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          body: |
+            Python package lib-ml version ${{ steps.extract_version.outputs.PKG_VERSION }} published!
+
+            Install with:
+
+            ```bash
+            pip install --extra-index-url https://pkg.github.com/${{ github.repository_owner }} lib-ml==${{ steps.extract_version.outputs.PKG_VERSION }}
+            ```
+
+
+      - name: Calculate next pre-release version
+        id: calc_version
+        if: "!contains(github.ref_name, '-pre')"
+        run: |
+          BASE_VERSION=${GITHUB_REF#refs/tags/v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          PATCH=$((PATCH + 1))
+          PRE_RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}-pre"
+          echo "pre_release_tag=$PRE_RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create pre-release
+        if: "!contains(github.ref_name, '-pre')"
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.calc_version.outputs.pre_release_tag }}
+          name: "Pre-release ${{ steps.calc_version.outputs.pre_release_tag }}"
+          body: |
+            Automated pre-release based on ${{ github.ref_name }}.
+
+            This is a pre-release for testing purposes.
+          prerelease: true
+          draft: false
