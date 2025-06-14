@@ -69,7 +69,8 @@ jobs:
           BASE_VERSION=${GITHUB_REF#refs/tags/v}
           IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
           PATCH=$((PATCH + 1))
-          PRE_RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}-pre"
+          SUFFIX=$(date +%s)
+          PRE_RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}-pre-${SUFFIX}"
           echo "pre_release_tag=$PRE_RELEASE_TAG" >> $GITHUB_OUTPUT
 
       - name: Create pre-release
