@@ -2,87 +2,124 @@ name: Release lib-ml Package
 
 on:
   push:
+    branches:
+      - razvan-w9
     tags:
-      - 'v*'  
+      - 'v[0-9]+.[0-9]+.[0-9]+'        # stable tags
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # 1) Checkout full history and persist creds for git push
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: true
 
-      - name: Setup Python 3.9
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
+    # 2) Determine if this is a tag or a main-branch push, and grab VERSION
+    - name: Prep event & version
+      id: prep
+      run: |
+        if [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          echo "EVENT=tag"      >> $GITHUB_ENV
+          VER="${GITHUB_REF#refs/tags/v}"
+        else
+          echo "EVENT=branch"   >> $GITHUB_ENV
+          VER=$(python -c "import lib_ml.version as v; print(v.__version__)")
+        fi
+        echo "VERSION=$VER"     >> $GITHUB_ENV
 
-      - name: Extract version from tag
-        id: extract_version
-        run: echo "PKG_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    # 3) Sync lib_ml/version.py (for tag events only – otherwise we'll overwrite in bump step)
+    - name: Inject version from tag into version.py
+      if: env.EVENT == 'tag'
+      run: |
+        echo "__version__ = '$VERSION'" > lib_ml/version.py
 
-      - name: Inject version into lib_ml/version.py
-        run: echo "__version__ = \"${{ steps.extract_version.outputs.PKG_VERSION }}\"" > lib_ml/version.py
+    # 4) Set up Python & build tools
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install build deps
+      run: python -m pip install --upgrade pip setuptools wheel twine
 
-      - name: Install build tools
-        run: python -m pip install --upgrade pip setuptools wheel
+    # 5) Build your distributions
+    - name: Build distributions
+      run: python setup.py sdist bdist_wheel
 
-      - name: Build distributions
-        run: python setup.py sdist bdist_wheel
+    # 6) Create or update GitHub Release for THIS tag (stable or prerelease)
+    - name: Publish GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name:       ${{ github.ref_name }}
+        prerelease: ${{ contains(github.ref_name, '-pre') }}
+        body: |
+          Python package **lib-ml** version **${{ env.VERSION }}** published!
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          python -m pip install --upgrade twine
-          twine upload --skip-existing dist/*
+          Install with:
 
-      - name: Create GitHub Release with artifacts
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-pre') }}
-          files: |
-            dist/*.whl
-            dist/*.tar.gz
-          body: |
-            Python package lib-ml version ${{ steps.extract_version.outputs.PKG_VERSION }} published!
+          ```bash
+          pip install --extra-index-url https://pkg.github.com/${{ github.repository_owner }} lib-ml==${{ env.VERSION }}
+          ```
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only run on tag events:
+      if: startsWith(github.ref, 'refs/tags/')
 
-            Install with:
+    # 7) Compute the NEXT prerelease version
+    - name: Compute next pre-release
+      id: bump
+      run: |
+        if [[ "$EVENT" == "tag" && ! "$VERSION" =~ -pre ]]; then
+          # Stable tag → bump patch & start pre.1
+          IFS='.' read MAJ MIN PATCH <<< "$VERSION"
+          NEXT="${MAJ}.${MIN}.$((PATCH+1))-pre.1"
+        else
+          # Already a prerelease → bump counter
+          if [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-pre\.([0-9]+)$ ]]; then
+            BASE="${BASH_REMATCH[1]}-pre"
+            COUNT="${BASH_REMATCH[2]}"
+            NEXT="${BASE}.$((COUNT+1))"
+          else
+            echo "ERROR: VERSION ($VERSION) is not a prerelease" >&2
+            exit 1
+          fi
+        fi
+        echo "NEXT=$NEXT" >> $GITHUB_ENV
+        echo "Computed next: $NEXT"
 
-            ```bash
-            pip install --extra-index-url https://pkg.github.com/${{ github.repository_owner }} lib-ml==${{ steps.extract_version.outputs.PKG_VERSION }}
-            ```
+    # 8) Ensure we’re on the branch that triggered this run
+    - name: Checkout triggering branch
+      run: |
+        if [ "$EVENT" == "branch" ]; then
+          # We already checked out $GITHUB_REF (main or feature)
+          echo "On branch, no change."
+        else
+          # We were on a tag → check out main to commit bump
+          git fetch origin main:main
+          git checkout main
+        fi
 
+    # 9) Update version.py, commit & push bump back to the branch
+    - name: Bump version.py & push
+      run: |
+        echo "__version__ = '$NEXT'" > lib_ml/version.py
+        git config user.name  "github-actions"
+        git config user.email "github-actions@github.com"
+        git add lib_ml/version.py
+        git commit -m "chore: bump to $NEXT"
+        # Push back to whichever branch triggered this job
+        BR=${GITHUB_REF#refs/heads/}
+        git push origin HEAD:$BR
 
-      - name: Calculate next pre-release version
-        id: calc_version
-        if: "!contains(github.ref_name, '-pre')"
-        run: |
-          BASE_VERSION=${GITHUB_REF#refs/tags/v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
-          PATCH=$((PATCH + 1))
-          SUFFIX=$(date +%s)
-          PRE_RELEASE_TAG="v${MAJOR}.${MINOR}.${PATCH}-pre-${SUFFIX}"
-          echo "pre_release_tag=$PRE_RELEASE_TAG" >> $GITHUB_OUTPUT
-
-      - name: Create pre-release
-        if: "!contains(github.ref_name, '-pre')"
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ steps.calc_version.outputs.pre_release_tag }}
-          name: "Pre-release ${{ steps.calc_version.outputs.pre_release_tag }}"
-          body: |
-            Automated pre-release based on ${{ github.ref_name }}.
-
-            This is a pre-release for testing purposes.
-          prerelease: true
-          draft: false
+    # 10) Tag the new prerelease and push the tag
+    - name: Tag next pre-release & push
+      run: |
+        git tag "v$NEXT"
+        git push origin "v$NEXT"
