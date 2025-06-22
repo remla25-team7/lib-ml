@@ -1,0 +1,87 @@
+name: Pre-release lib-ml
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  prerelease:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read & compute next pre-release version
+        id: bump
+        run: |
+          # Extract the old version, e.g. "1.2.3-pre.4" or just "1.2.3"
+          CUR=$(python - <<'EOF'
+                import re
+                from lib_ml import version as v
+                print(v.__version__)
+                EOF
+                )
+          echo "Current version: $CUR"
+
+          if [[ "$CUR" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-pre\.([0-9]+)$ ]]; then
+            BASE="${BASH_REMATCH[1]}-pre"
+            COUNT="${BASH_REMATCH[2]}"
+          else
+            BASE="$CUR-pre"
+            COUNT=0
+          fi
+
+          NEXT="${BASE}.$((COUNT + 1))"
+          echo "Next version: $NEXT"
+
+          # Overwrite version.py
+          echo "__version__ = '$NEXT'" > lib_ml/version.py
+
+          # Expose to next steps
+          echo "NEXT=$NEXT" >> $GITHUB_OUTPUT
+
+      - name: Set up Python & build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install --upgrade pip setuptools wheel twine
+          python setup.py sdist bdist_wheel
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit bumped version.py & tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW="${{ steps.bump.outputs.NEXT }}"
+          TAG="v$NEW"
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add lib_ml/version.py
+          git commit -m "chore: bump to $NEW"
+          git push origin main
+
+          # Only tag if it doesn't already exist
+          if ! git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null; then
+            git tag "$TAG"
+            git push origin "$TAG"
+          else
+            echo "Tag $TAG already exists, skipping."
+          fi

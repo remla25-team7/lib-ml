@@ -1,47 +1,74 @@
-#
-name: Publish lib‑ml to GitHub Packages
+name: Stable Release lib-ml
 
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    # Only on tags like v1.2.3
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write     # for pushing commits & tags
+  packages: write     # for publishing to GitHub Packages
 
 jobs:
-  build-and-publish:
+  release:
     runs-on: ubuntu-22.04
+    env:
+      # e.g. "v1.2.3"
+      TAG_REF: ${{ github.ref_name }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}          # strip leading refs/tags/v
-          MAJOR=$(cut -d. -f1 <<<"$VERSION")
-          MINOR=$(cut -d. -f2 <<<"$VERSION")
-          PATCH=$(cut -d. -f3 <<<"$VERSION")
-          echo "VERSION=$VERSION"           >> $GITHUB_ENV
-          echo "VERSION_MAJOR=$MAJOR"       >> $GITHUB_ENV
-          echo "VERSION_MINOR=$MINOR"       >> $GITHUB_ENV
-          echo "VERSION_PATCH=$PATCH"       >> $GITHUB_ENV
-
-      - name: Sync version.py with tag
-        run: |
-          echo "__version__ = \"${VERSION}\"" > lib_ml/version.py
-
-      - uses: actions/setup-python@v5
+      - name: Check out code
+        uses: actions/checkout@v4
         with:
-          python-version: "3.12"
+          fetch-depth: 0
 
-      - name: Build distributions
+      - name: Extract version
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          # strip the leading "v"
+          VER=${TAG_REF#v}
+          echo "VER=$VER" >> $GITHUB_ENV
+
+      - name: Sync lib_ml/version.py
+        run: |
+          # overwrite version.py so the wheel has the right X.Y.Z
+          echo "__version__ = '$VER'" > lib_ml/version.py
+
+      - name: Set up Python & build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install --upgrade pip setuptools wheel twine
           python setup.py sdist bdist_wheel
 
-      - name: Publish to PyPI
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
         env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump to next pre-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python -m pip install --upgrade twine
-          twine upload --skip-existing dist/*
-        
-      
+          # X.Y.Z → X.Y.(Z+1)-pre.1
+          IFS='.' read MAJ MIN PATCH <<< "$VER"
+          NEXT_PATCH=$((PATCH + 1))
+          NEW="${MAJ}.${MIN}.${NEXT_PATCH}-pre.1"
+
+          # Update version.py on main, commit & push
+          git checkout main
+          echo "__version__ = '$NEW'" > lib_ml/version.py
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add lib_ml/version.py
+          git commit -m "chore: bump to $NEW"
+          git push origin main
+
+          # Create & push the matching pre-release tag
+          git tag "v$NEW"
+          git push origin "v$NEW"
