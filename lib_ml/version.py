@@ -1,1 +1,1 @@
-__version__ = "will be replaced"
+__version__ = '0.4.1-pre.1'
