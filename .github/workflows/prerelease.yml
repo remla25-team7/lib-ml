@@ -3,7 +3,7 @@ name: Pre-release lib-ml
 on:
   push:
     branches:
-      - main
+      - razvan-w9
 
 permissions:
   contents: write
