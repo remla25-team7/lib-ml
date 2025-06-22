@@ -52,25 +52,22 @@ jobs:
     - name: Build distributions
       run: python setup.py sdist bdist_wheel
 
-    # 6) Create or update GitHub Release for THIS tag (stable or prerelease)
+    # 6) Create or update GitHub Release f
     - name: Publish GitHub Release
       uses: softprops/action-gh-release@v2
+      if: always()
       with:
-        tag_name: ${{ github.ref_name }}
-        name:       ${{ github.ref_name }}
-        prerelease: ${{ contains(github.ref_name, '-pre') }}
+        tag_name: ${{ env.EVENT == 'tag' && github.ref_name || format('v{0}', env.NEXT) }}
+        name: ${{ env.EVENT == 'tag' && github.ref_name || format('Pre-release v{0}', env.NEXT) }}
+        draft: false
+        prerelease: ${{ env.EVENT == 'branch' }}
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
         body: |
-          Python package **lib-ml** version **${{ env.VERSION }}** published!
-
-          Install with:
-
-          ```bash
-          pip install --extra-index-url https://pkg.github.com/${{ github.repository_owner }} lib-ml==${{ env.VERSION }}
-          ```
+          Python package **lib-ml** version **${{ env.EVENT == 'tag' && env.VERSION || env.NEXT }}** published!
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Only run on tag events:
-      if: startsWith(github.ref, 'refs/tags/')
 
     # 7) Compute the NEXT prerelease version
     - name: Compute next pre-release
